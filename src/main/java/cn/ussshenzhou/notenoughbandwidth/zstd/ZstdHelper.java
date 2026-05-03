@@ -4,11 +4,13 @@ import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
+import com.mojang.logging.LogUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.PacketFlow;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import org.slf4j.Logger;
 
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -17,6 +19,8 @@ import java.util.concurrent.ExecutionException;
  * @author USS_Shenzhou
  */
 public class ZstdHelper {
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static final boolean ZSTD_AVAILABLE = checkZstdAvailable();
 
     private static final Cache<Connection, Context> ZSTD_CONTEXT_CACHE = CacheBuilder.newBuilder()
             .weakKeys()
@@ -31,10 +35,16 @@ public class ZstdHelper {
             .build();
 
     public static ByteBuf compress(Connection connection, ByteBuf raw) {
+        if (!ZSTD_AVAILABLE) {
+            return raw.retainedDuplicate();
+        }
         return Unpooled.wrappedBuffer(get(connection).compress(raw.nioBuffer()));
     }
 
     public static ByteBuf decompress(Connection connection, ByteBuf compressed, int originalSize) {
+        if (!ZSTD_AVAILABLE) {
+            return compressed.retainedDuplicate();
+        }
         if (compressed.isDirect()) {
             return Unpooled.wrappedBuffer(get(connection).decompress(compressed.nioBuffer(), originalSize));
         } else {
@@ -43,6 +53,20 @@ public class ZstdHelper {
             var decompressed = Unpooled.wrappedBuffer(get(connection).decompress(directBuf.nioBuffer(), originalSize));
             directBuf.release();
             return decompressed;
+        }
+    }
+
+    public static boolean isZstdAvailable() {
+        return ZSTD_AVAILABLE;
+    }
+
+    private static boolean checkZstdAvailable() {
+        try {
+            new Context(true).close();
+            return true;
+        } catch (Throwable t) {
+            LOGGER.error("NEB: Failed to initialize zstd-jni, zstd compression is disabled.", t);
+            return false;
         }
     }
 
