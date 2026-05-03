@@ -70,7 +70,7 @@ public class PacketAggregationPacket implements CustomPacketPayload {
         packetsToEncode.forEach(p -> encodePackets(rawBuf, p));
 
         int rawSize = rawBuf.readableBytes();
-        boolean compress = rawSize >= 32;
+        boolean compress = rawSize >= 32 && ZstdHelper.isZstdAvailable();
         // B
         buffer.writeBoolean(compress);
         if (compress) {
